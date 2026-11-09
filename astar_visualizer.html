@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A* Search Visualizer</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --card:#fff; --ink:#1d2433; --muted:#6b7385; --line:#d9dde7;
+    --wall:#2b3142; --open:#fff1b8; --open-b:#e0b400; --closed:#d6e4ff; --closed-b:#2f6fed;
+    --path:#2fbf71; --path-soft:#c9f0da; --start:#2f6fed; --goal:#e5484d; --hl:#fff4b8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+  header{padding:18px 24px 6px}
+  h1{margin:0;font-size:22px}
+  header p{margin:4px 0 0;color:var(--muted);font-size:14px;max-width:1000px}
+  .wrap{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;padding:16px 24px 24px}
+  @media (max-width:1000px){.wrap{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card h2{margin:0 0 10px;font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  .side{display:flex;flex-direction:column;gap:16px}
+
+  .gridwrap{display:flex;justify-content:center}
+  .grid{display:grid;gap:4px;user-select:none}
+  .cell{width:76px;height:76px;border-radius:8px;background:#fff;border:2px solid var(--line);position:relative;cursor:pointer;transition:background .15s}
+  @media (max-width:600px){.cell{width:50px;height:50px}}
+  .cell.wall{background:var(--wall);border-color:var(--wall)}
+  .cell.open{background:var(--open);border-color:var(--open-b)}
+  .cell.closed{background:var(--closed);border-color:var(--closed-b)}
+  .cell.path{background:var(--path-soft);border-color:var(--path)}
+  .cell.cur{box-shadow:0 0 0 4px var(--ink)}
+  .cell.nb{outline:3px dashed var(--ink);outline-offset:2px}
+  .cell.skip{outline:3px dashed #b0b6c3;outline-offset:2px}
+  .cell .g{position:absolute;top:3px;left:6px;font-size:11px;color:#3c4458}
+  .cell .h{position:absolute;top:3px;right:6px;font-size:11px;color:#3c4458}
+  .cell .f{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px}
+  .cell .rc{position:absolute;bottom:2px;left:6px;font-size:10px;color:#9aa2b4}
+  .cell.wall .rc{color:#5c6478}
+  .cell .ord{position:absolute;bottom:2px;right:6px;font-size:10px;font-weight:700;color:var(--closed-b)}
+  .cell .arr{position:absolute;font-size:14px;color:#55607a;font-weight:700}
+  .cell .tag{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;padding-bottom:14px;font-size:10px;font-weight:800;letter-spacing:.05em}
+  .tag.s{color:var(--start)} .tag.t{color:var(--goal)}
+
+  .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+  button{font:inherit;font-size:14px;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer}
+  button:hover{background:#f0f2f8}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  button:disabled{opacity:.4;cursor:default}
+  .speed{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+  .stepinfo{margin-left:auto;color:var(--muted);font-size:13px}
+  .msg{margin-top:12px;padding:12px 14px;border-radius:10px;background:#f3f5fa;font-size:15px;line-height:1.45;min-height:48px;border-left:5px solid var(--muted)}
+  .msg.pop{border-left-color:var(--closed-b)} .msg.push{border-left-color:var(--open-b)}
+  .msg.done{border-left-color:var(--path);background:var(--path-soft)} .msg.fail{border-left-color:var(--goal);background:#fde2e3}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12.5px;color:var(--muted);margin-top:12px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:16px;height:16px;border-radius:4px;display:inline-block;border:2px solid}
+  .hint{font-size:12.5px;color:var(--muted);margin-top:8px}
+
+  pre.code{margin:0;font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;line-height:1.55;overflow:auto}
+  .ln{display:block;padding:0 8px;border-radius:4px;white-space:pre}
+  .ln .no{color:#a8afbf;display:inline-block;width:24px;user-select:none}
+  .ln.on{background:var(--hl)}
+  .kw{color:#a626a4}.fn{color:#4078f2}.cm{color:#a0a1a7;font-style:italic}
+
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{border:1px solid var(--line);padding:4px 6px;text-align:center}
+  th{background:#f3f5fa;font-weight:600}
+  tr.top td{background:#e6efff;font-weight:700}
+  tr.new td{background:var(--hl)}
+  .pqbox{max-height:240px;overflow:auto}
+  .empty{color:#b3b9c7;font-size:13px;padding:6px}
+  .output{font-family:ui-monospace,Consolas,monospace;font-size:13.5px;padding:10px;border-radius:8px;background:#1d2433;color:#d7f7e3;min-height:20px;white-space:pre-wrap;word-break:break-word}
+  .chips{display:flex;flex-wrap:wrap;gap:4px}
+  .chip{font-family:ui-monospace,Consolas,monospace;font-size:12px;padding:2px 6px;border-radius:5px;background:var(--closed);border:1px solid var(--closed-b)}
+</style>
+</head>
+<body>
+<header>
+  <h1>A* Search on a Grid Maze</h1>
+  <p>A* always pops the entry with the smallest <b>f = g + h</b> from the priority queue. <b>g</b> = steps taken from start, <b>h</b> = Manhattan distance to the goal. This page runs your <code>astar()</code> exactly as written (same move order, same heap tie-breaking on <code>(f, cost, node)</code>).</p>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="card">
+      <h2>Maze</h2>
+      <div class="gridwrap"><div class="grid" id="grid"></div></div>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--wall);border-color:var(--wall)"></i>wall (-1)</span>
+        <span><i class="sw" style="background:var(--open);border-color:var(--open-b)"></i>in pq (discovered, not expanded)</span>
+        <span><i class="sw" style="background:var(--closed);border-color:var(--closed-b)"></i>in vis (expanded)</span>
+        <span><i class="sw" style="background:var(--path-soft);border-color:var(--path)"></i>final path</span>
+        <span><i class="sw" style="background:#fff;border-color:var(--ink);border-width:3px"></i>node just popped</span>
+        <span><i class="sw" style="background:#fff;border-color:var(--ink);border-style:dashed"></i>neighbour being checked</span>
+      </div>
+      <div class="hint">In each cell: top-left <b>g</b>, top-right <b>h</b>, centre <b>f</b>, the small arrow points to the parent, and the blue number is the expansion order. <b>Click any cell to toggle a wall</b> and re-run.</div>
+      <div class="controls">
+        <button id="reset">⏮ Reset</button>
+        <button id="prev">◀ Prev</button>
+        <button id="play" class="primary">▶ Play</button>
+        <button id="next">Next ▶</button>
+        <button id="end">End ⏭</button>
+        <span class="speed">Speed <input id="speed" type="range" min="200" max="2000" step="100" value="1200"></span>
+        <button id="restore">Restore original maze</button>
+        <span class="stepinfo" id="stepinfo"></span>
+      </div>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card">
+      <h2>Code (current line highlighted)</h2>
+      <pre class="code" id="code"></pre>
+    </div>
+    <div class="card">
+      <h2>Priority queue (pq), sorted: next pop on top</h2>
+      <div class="pqbox"><table id="pq"></table></div>
+    </div>
+    <div class="card">
+      <h2>vis (expanded set)</h2>
+      <div class="chips" id="vis"></div>
+    </div>
+    <div class="card">
+      <h2>Output</h2>
+      <div class="output" id="output"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- Data from the Python code ----------
+const ORIGINAL = [
+  [0, 0, -1, 0, 0, 0],
+  [-1, 0, -1, 0, -1, 0],
+  [0, 0, 0, 0, -1, 0],
+  [0, -1, -1, 0, 0, 0],
+  [0, 0, 0, -1, -1, 0],
+  [-1, -1, 0, 0, 0, 0]
+];
+let maze = ORIGINAL.map(r=>[...r]);
+const start=[0,0], goal=[5,5];
+const moves=[[1,0],[0,1],[-1,0],[0,-1]];
+const K = n => n[0]+','+n[1];
+const T = n => `(${n[0]},${n[1]})`;
+const heuristic = n => Math.abs(n[0]-goal[0])+Math.abs(n[1]-goal[1]);
+const valid = (r,c) => r>=0 && r<maze.length && c>=0 && c<maze[0].length && maze[r][c]===0;
+function nextnode([r,c]){ const out=[]; for(const [dr,dc] of moves){ if(valid(r+dr,c+dc)) out.push([r+dr,c+dc]); } return out; }
+
+// Python tuple comparison for (f, cost, (r,c))
+const cmp = (a,b) => a.f-b.f || a.g-b.g || a.n[0]-b.n[0] || a.n[1]-b.n[1];
+
+// ---------- Code listing ----------
+const codeLines = [
+  "def astar():",
+  "    pq=[(heuristic(start),0,start)]",
+  "    vis=set()",
+  "",
+  "    par={start:None}",
+  "    while pq:",
+  "        _,cost,node=heapq.heappop(pq)",
+  "        if node in vis:",
+  "            continue",
+  "        vis.add(node)",
+  "",
+  "        if node==goal:",
+  "            return cpath(par,node)",
+  "",
+  "        for nx in nextnode(node):",
+  "            if nx not in vis and nx not in par:",
+  "                newcost=cost+1",
+  "                f=newcost+heuristic(nx)",
+  "",
+  "                par[nx]=node",
+  "                heapq.heappush(pq,(f,newcost,nx))",
+  "    return None"
+];
+function hlight(s){
+  s=s.replace(/&/g,"&amp;").replace(/</g,"&lt;");
+  s=s.replace(/\b(def|if|for|in|not|while|return|and|None|continue)\b/g,'<span class="kw">$1</span>');
+  s=s.replace(/\b(astar|heuristic|heappop|heappush|nextnode|cpath|set|add)\b/g,'<span class="fn">$1</span>');
+  return s;
+}
+document.getElementById('code').innerHTML = codeLines.map((l,i)=>`<span class="ln" id="ln${i}"><span class="no">${i+1}</span>${hlight(l)||' '}</span>`).join('');
+
+// ---------- Simulation (records every step) ----------
+let steps=[];
+function simulate(){
+  steps=[];
+  let pq=[], vis=new Set(), par={}, info={}, order={}, cnt=0;
+  // info[key] = {g,h,f} for the values the node was pushed with
+  const snap = o => steps.push({
+    pq:[...pq].sort(cmp).map(e=>({...e})), vis:[...vis], par:{...par}, info:JSON.parse(JSON.stringify(info)),
+    order:{...order}, lines:[], msg:'', kind:'', cur:null, nb:null, skip:null, path:null, newPush:null, out:'', ...o
+  });
+
+  pq.push({f:heuristic(start), g:0, n:start});
+  par[K(start)]=null; info[K(start)]={g:0,h:heuristic(start),f:heuristic(start)};
+  snap({lines:[1,2,4], msg:`Initialise: push <b>(f=${heuristic(start)}, cost=0, ${T(start)})</b>. h${T(start)} = |0-5|+|0-5| = ${heuristic(start)}. par = {${T(start)}: None}, vis is empty.`});
+
+  while(pq.length){
+    snap({lines:[5], msg:`pq has ${pq.length} entr${pq.length===1?'y':'ies'}, so keep looping.`});
+    pq.sort(cmp);
+    const e = pq.shift(), node=e.n, cost=e.g;
+    if (vis.has(K(node))){
+      snap({lines:[6,7,8], cur:node, msg:`Popped ${T(node)}, but it is already in vis, so <code>continue</code>.`});
+      continue;
+    }
+    vis.add(K(node)); order[K(node)]=++cnt;
+    snap({lines:[6,7,9], cur:node, kind:'pop',
+      msg:`Pop the smallest entry <b>(f=${e.f}, cost=${cost}, ${T(node)})</b>. It is not in vis, so add it (expansion #${cnt}).`});
+
+    if (K(node)===K(goal)){
+      const path=[]; let k=K(node);
+      while(k!==null){ path.push(k); k=par[k]; }
+      path.reverse();
+      const pts = path.map(p=>`(${p.replace(',',', ')})`);
+      snap({lines:[11,12], cur:node, kind:'done', path,
+        msg:`🎉 ${T(node)} is the goal. cpath follows par back to the start.<br>Path: <b>${path.map(p=>'('+p+')').join(' → ')}</b><br>Path cost = ${path.length-1}, nodes expanded = ${cnt}.`,
+        out:`[${pts.join(', ')}]\npathcost= ${path.length-1}`});
+      return;
+    }
+
+    const nbs = nextnode(node);
+    snap({lines:[11,14], cur:node, kind:'pop',
+      msg:`${T(node)} is not the goal. Valid neighbours in move order (down, right, up, left): ${nbs.length? nbs.map(T).join(', ') : '<i>none</i>'}.`});
+
+    for (const nx of nbs){
+      const k=K(nx);
+      if (vis.has(k) || k in par){
+        snap({lines:[14,15], cur:node, skip:nx,
+          msg:`Neighbour ${T(nx)}: ${vis.has(k)?'already in vis':'already in par (already discovered)'}, so skip it.`});
+        continue;
+      }
+      const ng=cost+1, h=heuristic(nx), f=ng+h;
+      par[k]=K(node); info[k]={g:ng,h,f};
+      pq.push({f,g:ng,n:nx});
+      snap({lines:[15,16,17,19,20], cur:node, nb:nx, kind:'push', newPush:k,
+        msg:`Neighbour ${T(nx)} is new. newcost = ${cost}+1 = <b>${ng}</b>, h = |${nx[0]}-5|+|${nx[1]}-5| = <b>${h}</b>, f = <b>${f}</b>. Set par${T(nx)} = ${T(node)} and push (${f}, ${ng}, ${T(nx)}).`});
+    }
+  }
+  snap({lines:[21], kind:'fail', msg:'pq is empty and the goal was never reached, so astar() returns None.',
+        out:"None\nTypeError: object of type 'NoneType' has no len()"});
+}
+
+// ---------- Rendering ----------
+const gridEl=document.getElementById('grid');
+let idx=0;
+const arrowFor = (child, parent) => {
+  const [cr,cc]=child.split(',').map(Number), [pr,pc]=parent.split(',').map(Number);
+  if (pr<cr) return {ch:'↑', css:'top:2px;left:50%;transform:translateX(-50%)'};
+  if (pr>cr) return {ch:'↓', css:'bottom:12px;left:50%;transform:translateX(-50%)'};
+  if (pc<cc) return {ch:'←', css:'left:4px;top:50%;transform:translateY(-50%)'};
+  return {ch:'→', css:'right:4px;top:50%;transform:translateY(-50%)'};
+};
+
+function render(){
+  const s=steps[idx];
+  const R=maze.length, C=maze[0].length;
+  gridEl.style.gridTemplateColumns=`repeat(${C}, auto)`;
+  const pqKeys=new Set(s.pq.map(e=>K(e.n)));
+  const visSet=new Set(s.vis), pathSet=new Set(s.path||[]);
+  let html='';
+  for(let r=0;r<R;r++) for(let c=0;c<C;c++){
+    const k=r+','+c, cls=['cell'];
+    if (maze[r][c]!==0) cls.push('wall');
+    else if (pathSet.has(k)) cls.push('path');
+    else if (visSet.has(k)) cls.push('closed');
+    else if (pqKeys.has(k)) cls.push('open');
+    if (s.cur && K(s.cur)===k) cls.push('cur');
+    if (s.nb && K(s.nb)===k) cls.push('nb');
+    if (s.skip && K(s.skip)===k) cls.push('skip');
+    let inner=`<span class="rc">(${r},${c})</span>`;
+    const inf=s.info[k];
+    if (inf && maze[r][c]===0){
+      inner+=`<span class="g">g${inf.g}</span><span class="h">h${inf.h}</span><span class="f">${inf.f}</span>`;
+      const p=s.par[k];
+      if (p){ const a=arrowFor(k,p); inner+=`<span class="arr" style="${a.css}">${a.ch}</span>`; }
+    }
+    if (s.order[k]) inner+=`<span class="ord">#${s.order[k]}</span>`;
+    if (k===K(start)) inner+=`<span class="tag s">START</span>`;
+    if (k===K(goal)) inner+=`<span class="tag t">GOAL</span>`;
+    html+=`<div class="${cls.join(' ')}" data-k="${k}">${inner}</div>`;
+  }
+  gridEl.innerHTML=html;
+
+  const m=document.getElementById('msg'); m.className='msg '+s.kind; m.innerHTML=s.msg;
+  document.getElementById('stepinfo').textContent=`Step ${idx+1} / ${steps.length}`;
+  codeLines.forEach((_,i)=>document.getElementById('ln'+i).classList.toggle('on', s.lines.includes(i)));
+
+  const pqT=document.getElementById('pq');
+  if (!s.pq.length) pqT.innerHTML='<tr><td class="empty">empty</td></tr>';
+  else pqT.innerHTML='<tr><th>#</th><th>f</th><th>cost (g)</th><th>node</th></tr>'+
+    s.pq.map((e,i)=>`<tr class="${i===0?'top':''} ${s.newPush===K(e.n)?'new':''}"><td>${i===0?'next →':i+1}</td><td>${e.f}</td><td>${e.g}</td><td>${T(e.n)}</td></tr>`).join('');
+
+  document.getElementById('vis').innerHTML = s.vis.length ? s.vis.map(k=>`<span class="chip">(${k})</span>`).join('') : '<span class="empty">empty</span>';
+  document.getElementById('output').textContent=s.out||'';
+  document.getElementById('prev').disabled=idx===0;
+  document.getElementById('next').disabled=idx===steps.length-1;
+  document.getElementById('end').disabled=idx===steps.length-1;
+}
+
+// ---------- Controls ----------
+let timer=null;
+const $=id=>document.getElementById(id);
+function stop(){ clearInterval(timer); timer=null; $('play').textContent='▶ Play'; }
+function play(){
+  if (idx===steps.length-1) idx=0;
+  $('play').textContent='⏸ Pause';
+  timer=setInterval(()=>{ if(idx<steps.length-1){idx++;render();} else stop(); }, 2200-+$('speed').value);
+}
+$('play').onclick=()=>timer?stop():play();
+$('next').onclick=()=>{stop(); if(idx<steps.length-1){idx++;render();}};
+$('prev').onclick=()=>{stop(); if(idx>0){idx--;render();}};
+$('reset').onclick=()=>{stop(); idx=0; render();};
+$('end').onclick=()=>{stop(); idx=steps.length-1; render();};
+$('speed').oninput=()=>{ if(timer){stop();play();} };
+$('restore').onclick=()=>{ maze=ORIGINAL.map(r=>[...r]); rerun(); };
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight') $('next').click();
+  if(e.key==='ArrowLeft') $('prev').click();
+  if(e.key===' '){ e.preventDefault(); $('play').click(); }
+});
+gridEl.addEventListener('click',e=>{
+  const cell=e.target.closest('.cell'); if(!cell) return;
+  const [r,c]=cell.dataset.k.split(',').map(Number);
+  if ((r===start[0]&&c===start[1])||(r===goal[0]&&c===goal[1])) return;
+  maze[r][c] = maze[r][c]===0 ? -1 : 0;
+  rerun();
+});
+function rerun(){ stop(); simulate(); idx=0; render(); }
+rerun();
+</script>
+</body>
+</html>

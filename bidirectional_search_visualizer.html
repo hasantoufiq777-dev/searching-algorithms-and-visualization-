@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bidirectional Search Visualizer</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --card:#ffffff; --ink:#1d2433; --muted:#6b7385; --line:#d9dde7;
+    --fwd:#2f6fed; --fwd-soft:#dbe6ff;
+    --bwd:#f08a24; --bwd-soft:#ffe8d1;
+    --meet:#8e44ad; --meet-soft:#ecdcf5;
+    --path:#1f9d55; --path-soft:#d3f2e0;
+    --hl:#fff4b8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+  header{padding:18px 24px 6px}
+  h1{margin:0;font-size:22px}
+  header p{margin:4px 0 0;color:var(--muted);font-size:14px}
+  .wrap{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;padding:16px 24px 24px}
+  @media (max-width:1000px){.wrap{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card h2{margin:0 0 10px;font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  svg{width:100%;height:auto;display:block}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+  button,select{font:inherit;font-size:14px;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer}
+  button:hover{background:#f0f2f8}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  button:disabled{opacity:.4;cursor:default}
+  .stepinfo{margin-left:auto;color:var(--muted);font-size:13px}
+  .msg{margin-top:12px;padding:12px 14px;border-radius:10px;background:#f3f5fa;font-size:15px;line-height:1.45;min-height:48px}
+  .msg.f{border-left:5px solid var(--fwd)} .msg.b{border-left:5px solid var(--bwd)}
+  .msg.done{border-left:5px solid var(--path);background:var(--path-soft)}
+  .msg.n{border-left:5px solid var(--muted)}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted);margin-top:10px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:14px;height:14px;border-radius:50%;display:inline-block;border:2px solid}
+  pre.code{margin:0;font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;line-height:1.55;overflow:auto}
+  .ln{display:block;padding:0 8px;border-radius:4px;white-space:pre}
+  .ln .no{color:#a8afbf;display:inline-block;width:24px;user-select:none}
+  .ln.on{background:var(--hl)}
+  .kw{color:#a626a4}.fn{color:#4078f2}.cm{color:#a0a1a7;font-style:italic}.st{color:#50a14f}
+  .side{display:flex;flex-direction:column;gap:16px}
+  .queues{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .qbox h3{margin:0 0 6px;font-size:13px}
+  .qbox.f h3{color:var(--fwd)} .qbox.b h3{color:var(--bwd)}
+  .qitems{display:flex;gap:6px;flex-wrap:wrap;min-height:34px;padding:6px;border:1px dashed var(--line);border-radius:8px}
+  .qi{width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff}
+  .f .qi{background:var(--fwd)} .b .qi{background:var(--bwd)}
+  .empty{color:#b3b9c7;font-size:13px;padding:5px}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{border:1px solid var(--line);padding:4px 6px;text-align:center}
+  th{background:#f3f5fa;font-weight:600}
+  td.new{background:var(--hl);font-weight:700}
+  .output{font-family:ui-monospace,Consolas,monospace;font-size:14px;padding:10px;border-radius:8px;background:#1d2433;color:#d7f7e3;min-height:20px}
+  .speed{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Bidirectional Search (BFS from both ends)</h1>
+  <p>Forward BFS starts at the <b style="color:var(--fwd)">start</b> node, backward BFS starts at the <b style="color:var(--bwd)">goal</b> node. They take turns expanding one node each, and stop as soon as one search touches a node the other has already visited.</p>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="card">
+      <h2>Graph</h2>
+      <svg id="svg" viewBox="0 0 760 400"></svg>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--fwd-soft);border-color:var(--fwd)"></i>visited by forward (vis1)</span>
+        <span><i class="sw" style="background:var(--bwd-soft);border-color:var(--bwd)"></i>visited by backward (vis2)</span>
+        <span><i class="sw" style="background:var(--meet-soft);border-color:var(--meet)"></i>visited by both</span>
+        <span><i class="sw" style="background:var(--path-soft);border-color:var(--path)"></i>final path</span>
+        <span><i class="sw" style="background:#fff;border-color:var(--ink);border-width:4px"></i>node being expanded</span>
+        <span><i class="sw" style="background:#fff;border-color:var(--ink);border-style:dashed"></i>child being checked</span>
+      </div>
+      <div class="controls">
+        <button id="reset">⏮ Reset</button>
+        <button id="prev">◀ Prev</button>
+        <button id="play" class="primary">▶ Play</button>
+        <button id="next">Next ▶</button>
+        <span class="speed">Speed <input id="speed" type="range" min="200" max="2000" step="100" value="1100"></span>
+        <label class="speed">Start <select id="startSel"></select></label>
+        <label class="speed">Goal <select id="goalSel"></select></label>
+        <span class="stepinfo" id="stepinfo"></span>
+      </div>
+      <div class="msg n" id="msg"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Queues</h2>
+      <div class="queues">
+        <div class="qbox f"><h3>q1 (forward) — front on the left</h3><div class="qitems" id="q1"></div></div>
+        <div class="qbox b"><h3>q2 (backward) — front on the left</h3><div class="qitems" id="q2"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card">
+      <h2>Code (current line highlighted)</h2>
+      <pre class="code" id="code"></pre>
+    </div>
+    <div class="card">
+      <h2>Parent maps</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><div style="font-size:13px;font-weight:600;color:var(--fwd);margin-bottom:4px">vis1 (child → parent)</div><table id="vis1"></table></div>
+        <div><div style="font-size:13px;font-weight:600;color:var(--bwd);margin-bottom:4px">vis2 (child → parent)</div><table id="vis2"></table></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Output</h2>
+      <div class="output" id="output"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- Graph from the Python code ----------
+const graph = {
+  'A': ['B', 'C'],
+  'B': ['A', 'D'],
+  'C': ['A', 'E'],
+  'D': ['B', 'F'],
+  'E': ['C', 'F'],
+  'F': ['D', 'E', 'G'],
+  'G': ['F']
+};
+const pos = {A:[80,200],B:[230,95],C:[230,305],D:[400,95],E:[400,305],F:[560,200],G:[690,200]};
+
+// ---------- Code listing ----------
+const codeLines = [
+  "def bidir(graph, start, goal):",
+  "    if start == goal:",
+  "        return [start]",
+  "",
+  "    q1 = deque([start])",
+  "    q2 = deque([goal])",
+  "    vis1 = {start: None}",
+  "    vis2 = {goal: None}",
+  "",
+  "    while q1 and q2:",
+  "        # Forward BFS",
+  "        node = q1.popleft()",
+  "        for child in graph[node]:",
+  "            if child not in vis1:",
+  "                vis1[child] = node",
+  "                q1.append(child)",
+  "            if child in vis2:",
+  "                return makepath(vis1, vis2, child)",
+  "",
+  "        # Backward BFS",
+  "        node = q2.popleft()",
+  "        for child in graph[node]:",
+  "            if child not in vis2:",
+  "                vis2[child] = node",
+  "                q2.append(child)",
+  "            if child in vis1:",
+  "                return makepath(vis1, vis2, child)",
+  "",
+  "    return None"
+];
+function highlight(src){
+  let s = src.replace(/&/g,"&amp;").replace(/</g,"&lt;");
+  if (s.trim().startsWith("#")) return `<span class="cm">${s}</span>`;
+  s = s.replace(/\b(def|if|for|in|not|while|return|and|None)\b/g,'<span class="kw">$1</span>');
+  s = s.replace(/\b(bidir|deque|makepath|popleft|append)\b/g,'<span class="fn">$1</span>');
+  return s;
+}
+const codeEl = document.getElementById('code');
+codeEl.innerHTML = codeLines.map((l,i)=>`<span class="ln" id="ln${i}"><span class="no">${i+1}</span>${highlight(l)||' '}</span>`).join('');
+
+// ---------- makepath (same logic as Python) ----------
+function makepath(vis1, vis2, meet){
+  const p1 = []; let n = meet;
+  while (n !== null){ p1.push(n); n = vis1[n]; }
+  p1.reverse();
+  const p2 = []; n = vis2[meet];
+  while (n !== null){ p2.push(n); n = vis2[n]; }
+  return p1.concat(p2);
+}
+
+// ---------- Simulate the algorithm, recording every step ----------
+let steps = [];
+function simulate(start, goal){
+  steps = [];
+  let q1=[], q2=[], vis1={}, vis2={};
+  const snap = (o) => steps.push({
+    q1:[...q1], q2:[...q2], vis1:{...vis1}, vis2:{...vis2},
+    cur:null, child:null, dir:'n', lines:[], msg:'', path:null, newKey:null, newDir:null, out:'', ...o
+  });
+
+  if (start === goal){
+    snap({lines:[1,2], msg:`start == goal, so the answer is just <b>[${start}]</b>.`, path:[start], dir:'done', out:`Shortest Path: ['${start}']`});
+    return;
+  }
+  q1=[start]; q2=[goal]; vis1={[start]:null}; vis2={[goal]:null};
+  snap({lines:[4,5,6,7], msg:`Initialise: q1 = [${start}], q2 = [${goal}]. vis1 marks <b>${start}</b> (parent None), vis2 marks <b>${goal}</b> (parent None).`});
+
+  let round = 0;
+  while (q1.length && q2.length){
+    round++;
+    snap({lines:[9], msg:`Round ${round}: both queues are non-empty, so the loop continues.`});
+    for (const dir of ['f','b']){
+      const q = dir==='f'?q1:q2, mine = dir==='f'?vis1:vis2, other = dir==='f'?vis2:vis1;
+      const mName = dir==='f'?'vis1':'vis2', oName = dir==='f'?'vis2':'vis1', qName = dir==='f'?'q1':'q2';
+      const label = dir==='f'?'Forward':'Backward';
+      const base = dir==='f'?0:9;
+      if (!q.length) break; // safety; never hit for this code's structure
+      const node = q.shift();
+      snap({lines:[base+11], cur:node, dir, msg:`<b>${label} BFS:</b> pop <b>${node}</b> from the front of ${qName}. Its neighbours are [${graph[node].join(', ')}].`});
+      for (const child of graph[node]){
+        let txt;
+        if (!(child in mine)){
+          mine[child] = node; q.push(child);
+          txt = `<b>${child}</b> is not in ${mName} → set ${mName}[${child}] = ${node} and add ${child} to ${qName}.`;
+          snap({lines:[base+12,base+13,base+14,base+15], cur:node, child, dir, newKey:child, newDir:dir,
+                msg:`${label}: neighbour ${txt} Is ${child} in ${oName}? ${child in other ? '<b>Yes!</b>' : 'No.'}`});
+        } else {
+          txt = `<b>${child}</b> is already in ${mName}, so skip it.`;
+          snap({lines:[base+12,base+13,base+16], cur:node, child, dir,
+                msg:`${label}: neighbour ${txt} Is ${child} in ${oName}? ${child in other ? '<b>Yes!</b>' : 'No.'}`});
+        }
+        if (child in other){
+          const path = makepath(vis1, vis2, child);
+          snap({lines:[base+16,base+17], cur:node, child, dir:'done', path, meet:child,
+                msg:`🎉 The searches meet at <b>${child}</b>. makepath follows vis1 back from ${child} to ${start}, then vis2 forward from ${child} to ${goal}.<br>Path = <b>${path.join(' → ')}</b> (${path.length-1} edges).`,
+                out:`Shortest Path: [${path.map(p=>`'${p}'`).join(', ')}]`});
+          return;
+        }
+      }
+    }
+  }
+  snap({lines:[28], msg:'A queue became empty without the searches meeting, so there is no path.', out:'Shortest Path: None'});
+}
+
+// ---------- Rendering ----------
+const svg = document.getElementById('svg');
+const NS = 'http://www.w3.org/2000/svg';
+const el = (t,a)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;};
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+function edgeKey(a,b){return [a,b].sort().join('-');}
+const edges = [];
+{ const seen=new Set();
+  for (const u in graph) for (const v of graph[u]){ const k=edgeKey(u,v); if(!seen.has(k)){seen.add(k);edges.push([u,v]);} } }
+
+let idx = 0, startNode='A', goalNode='G';
+
+function render(){
+  const s = steps[idx];
+  svg.innerHTML = '';
+  // arrow markers
+  const defs = el('defs',{});
+  for (const [id,col] of [['af',css('--fwd')],['ab',css('--bwd')]]){
+    const m = el('marker',{id,viewBox:'0 0 10 10',refX:'9',refY:'5',markerWidth:'7',markerHeight:'7',orient:'auto-start-reverse'});
+    m.appendChild(el('path',{d:'M0,0 L10,5 L0,10 z',fill:col}));
+    defs.appendChild(m);
+  }
+  svg.appendChild(defs);
+
+  const pathEdges = new Set();
+  if (s.path) for (let i=0;i<s.path.length-1;i++) pathEdges.add(edgeKey(s.path[i],s.path[i+1]));
+
+  // base edges
+  for (const [u,v] of edges){
+    const [x1,y1]=pos[u],[x2,y2]=pos[v];
+    const onPath = pathEdges.has(edgeKey(u,v));
+    svg.appendChild(el('line',{x1,y1,x2,y2,stroke:onPath?css('--path'):'#c9ceda','stroke-width':onPath?9:3,'stroke-linecap':'round'}));
+  }
+  // parent (tree) edges as arrows child -> parent direction shown as parent -> child
+  const R = 26;
+  const drawTree = (vis, col, mk, offset) => {
+    for (const c in vis){ const p = vis[c]; if (p===null) continue;
+      if (pathEdges.has(edgeKey(c,p))) continue;
+      const [x1,y1]=pos[p],[x2,y2]=pos[c];
+      const dx=x2-x1, dy=y2-y1, L=Math.hypot(dx,dy), ux=dx/L, uy=dy/L;
+      const ox = -uy*offset, oy = ux*offset;
+      svg.appendChild(el('line',{x1:x1+ux*R+ox,y1:y1+uy*R+oy,x2:x2-ux*(R+4)+ox,y2:y2-uy*(R+4)+oy,stroke:col,'stroke-width':3.5,'marker-end':`url(#${mk})`}));
+    }
+  };
+  drawTree(s.vis1, css('--fwd'), 'af', -5);
+  drawTree(s.vis2, css('--bwd'), 'ab', 5);
+
+  // nodes
+  for (const n in pos){
+    const [x,y]=pos[n];
+    const in1 = n in s.vis1, in2 = n in s.vis2, onPath = s.path && s.path.includes(n);
+    let fill='#fff', stroke='#9aa2b4';
+    if (in1 && in2){fill=css('--meet-soft');stroke=css('--meet');}
+    else if (in1){fill=css('--fwd-soft');stroke=css('--fwd');}
+    else if (in2){fill=css('--bwd-soft');stroke=css('--bwd');}
+    if (onPath){fill=css('--path-soft');stroke=css('--path');}
+    const g = el('g',{});
+    if (n===s.cur) g.appendChild(el('circle',{cx:x,cy:y,r:R+8,fill:'none',stroke:css('--ink'),'stroke-width':4}));
+    if (n===s.child) g.appendChild(el('circle',{cx:x,cy:y,r:R+8,fill:'none',stroke:css('--ink'),'stroke-width':2.5,'stroke-dasharray':'6 5'}));
+    g.appendChild(el('circle',{cx:x,cy:y,r:R,fill,stroke,'stroke-width':3.5}));
+    const t = el('text',{x,y:y+7,'text-anchor':'middle','font-size':20,'font-weight':700,fill:css('--ink')}); t.textContent=n; g.appendChild(t);
+    if (n===startNode || n===goalNode){
+      const tag = el('text',{x,y:y+R+24,'text-anchor':'middle','font-size':13,'font-weight':700,fill:n===startNode?css('--fwd'):css('--bwd')});
+      tag.textContent = n===startNode?'START':'GOAL'; g.appendChild(tag);
+    }
+    svg.appendChild(g);
+  }
+
+  // message
+  const m = document.getElementById('msg');
+  m.className = 'msg ' + s.dir; m.innerHTML = s.msg;
+  document.getElementById('stepinfo').textContent = `Step ${idx+1} / ${steps.length}`;
+
+  // code highlight
+  codeLines.forEach((_,i)=>document.getElementById('ln'+i).classList.toggle('on', s.lines.includes(i)));
+
+  // queues
+  const qRender = (id, arr) => document.getElementById(id).innerHTML =
+    arr.length ? arr.map(x=>`<div class="qi">${x}</div>`).join('') : '<span class="empty">empty</span>';
+  qRender('q1', s.q1); qRender('q2', s.q2);
+
+  // vis tables
+  const tRender = (id, vis, dir) => {
+    let h = '<tr><th>node</th><th>parent</th></tr>';
+    for (const k in vis){
+      const nw = s.newKey===k && s.newDir===dir;
+      h += `<tr><td class="${nw?'new':''}">${k}</td><td class="${nw?'new':''}">${vis[k]===null?'None':vis[k]}</td></tr>`;
+    }
+    document.getElementById(id).innerHTML = h;
+  };
+  tRender('vis1', s.vis1, 'f'); tRender('vis2', s.vis2, 'b');
+
+  document.getElementById('output').textContent = s.out || '';
+  document.getElementById('prev').disabled = idx===0;
+  document.getElementById('next').disabled = idx===steps.length-1;
+}
+
+// ---------- Controls ----------
+let timer = null;
+function stop(){ clearInterval(timer); timer=null; document.getElementById('play').textContent='▶ Play'; }
+function play(){
+  if (idx===steps.length-1) idx=0;
+  document.getElementById('play').textContent='⏸ Pause';
+  const tick = ()=>{ if (idx<steps.length-1){idx++;render();} else stop(); };
+  timer = setInterval(tick, 2200 - +document.getElementById('speed').value);
+}
+document.getElementById('play').onclick = ()=> timer?stop():play();
+document.getElementById('next').onclick = ()=>{stop(); if(idx<steps.length-1){idx++;render();}};
+document.getElementById('prev').onclick = ()=>{stop(); if(idx>0){idx--;render();}};
+document.getElementById('reset').onclick = ()=>{stop(); idx=0; render();};
+document.getElementById('speed').oninput = ()=>{ if(timer){stop();play();} };
+document.addEventListener('keydown', e=>{
+  if (e.key==='ArrowRight') document.getElementById('next').click();
+  if (e.key==='ArrowLeft') document.getElementById('prev').click();
+  if (e.key===' ') { e.preventDefault(); document.getElementById('play').click(); }
+});
+
+const ss = document.getElementById('startSel'), gs = document.getElementById('goalSel');
+for (const n in graph){ ss.add(new Option(n,n)); gs.add(new Option(n,n)); }
+ss.value='A'; gs.value='G';
+function rerun(){ stop(); startNode=ss.value; goalNode=gs.value; simulate(startNode, goalNode); idx=0; render(); }
+ss.onchange = rerun; gs.onchange = rerun;
+
+rerun();
+</script>
+</body>
+</html>
