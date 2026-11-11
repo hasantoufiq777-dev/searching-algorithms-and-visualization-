@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fuzzy Logic Fan Speed Controller: Visualizer</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --card:#fff; --ink:#1d2433; --muted:#6b7385; --line:#d9dde7;
+    --cold:#2f6fed; --warm:#f2a50c; --hot:#e5484d;
+    --low:#13a8a8; --high:#8e44ad;
+    --slow:#2f6fed; --medium:#f2a50c; --fast:#e5484d;
+    --agg:#1d2433; --crisp:#1f9d55; --hl:#fff4b8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+  header{padding:18px 24px 4px}
+  h1{margin:0;font-size:22px}
+  header p{margin:4px 0 0;color:var(--muted);font-size:14px;max-width:1050px}
+  main{padding:14px 24px 28px;display:flex;flex-direction:column;gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card h2{margin:0 0 4px;font-size:16px}
+  .card .sub{margin:0 0 12px;color:var(--muted);font-size:13.5px}
+  .num{display:inline-flex;width:24px;height:24px;border-radius:50%;background:var(--ink);color:#fff;font-size:13px;align-items:center;justify-content:center;margin-right:8px}
+
+  .inputs{display:grid;grid-template-columns:1fr 1fr auto;gap:22px;align-items:center}
+  @media (max-width:900px){.inputs{grid-template-columns:1fr}}
+  .slider label{display:flex;justify-content:space-between;font-weight:600;font-size:14px;margin-bottom:6px}
+  .slider label b{font-size:20px}
+  input[type=range]{width:100%}
+  .presets{display:flex;flex-wrap:wrap;gap:6px}
+  button{font:inherit;font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer}
+  button:hover{background:#f0f2f8}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:900px){.two{grid-template-columns:1fr}}
+  canvas{width:100%;display:block}
+  .chartTitle{font-size:13px;font-weight:700;color:var(--muted);margin:0 0 4px}
+  .vals{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .pill{font-size:13px;padding:5px 10px;border-radius:999px;border:2px solid;background:#fff;font-variant-numeric:tabular-nums}
+  .pill.zero{opacity:.45}
+  .calc{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.6}
+
+  .rules{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media (max-width:900px){.rules{grid-template-columns:1fr}}
+  .rule{border:2px solid var(--line);border-radius:10px;padding:12px}
+  .rule .head{font-weight:700;font-size:14px;margin-bottom:6px}
+  .rule .eng{font-size:13.5px;margin-bottom:8px}
+  .rule .math{font-family:ui-monospace,Consolas,monospace;font-size:13px;background:#f3f5fa;padding:8px;border-radius:6px}
+  .bar{height:12px;border-radius:6px;background:#eef0f5;margin-top:10px;overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:6px;transition:width .2s}
+  .rule.off{opacity:.5}
+
+  .outgrid{display:grid;grid-template-columns:2fr 1fr;gap:16px;align-items:center}
+  @media (max-width:900px){.outgrid{grid-template-columns:1fr}}
+  .fanbox{text-align:center}
+  .fanbox .speed{font-size:40px;font-weight:800;color:var(--crisp);font-variant-numeric:tabular-nums}
+  .fanbox .lbl{color:var(--muted);font-size:13px}
+  #fan{width:160px;height:160px}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--muted);margin-top:8px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:16px;height:10px;border-radius:2px;display:inline-block}
+
+  .console{font-family:ui-monospace,Consolas,monospace;font-size:13.5px;background:#1d2433;color:#d7f7e3;border-radius:10px;padding:12px 14px;white-space:pre;overflow:auto;line-height:1.5}
+  .flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+  .flow b{color:var(--ink);background:#eef0f5;padding:4px 8px;border-radius:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Fuzzy Logic: Fan Speed Controller</h1>
+  <p>Mamdani fuzzy inference, the same as your Python code. Move the sliders and every stage updates live.</p>
+  <div class="flow" style="margin-top:10px">
+    <b>Crisp inputs</b> → <b>1. Fuzzification</b> → <b>2. Rule evaluation</b> → <b>3. Clipping &amp; aggregation</b> → <b>4. Defuzzification (centroid)</b> → <b>Crisp fan speed</b>
+  </div>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Inputs</h2>
+    <div class="inputs">
+      <div class="slider">
+        <label>Temperature (°C) <b id="tVal">28</b></label>
+        <input id="temp" type="range" min="0" max="45" step="1" value="28">
+      </div>
+      <div class="slider">
+        <label>Humidity (%) <b id="hVal">70</b></label>
+        <input id="hum" type="range" min="0" max="100" step="1" value="70">
+      </div>
+      <div class="presets">
+        <button data-t="28" data-h="70">Code default (28, 70)</button>
+        <button data-t="5" data-h="30">Cold &amp; dry</button>
+        <button data-t="20" data-h="50">Mild</button>
+        <button data-t="38" data-h="90">Hot &amp; humid</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="num">1</span>Fuzzification</h2>
+    <p class="sub">Each crisp input is turned into membership degrees (0 to 1) for every fuzzy set. The dashed line is the input value; each dot is where it crosses a set.</p>
+    <div class="two">
+      <div>
+        <div class="chartTitle">Temperature: cold = tri(0,0,20), warm = tri(10,20,30), hot = tri(20,40,40)</div>
+        <canvas id="cTemp" height="230"></canvas>
+        <div class="vals" id="tPills"></div>
+        <div class="calc" id="tCalc"></div>
+      </div>
+      <div>
+        <div class="chartTitle">Humidity: low = tri(0,0,60), high = tri(40,100,100)</div>
+        <canvas id="cHum" height="230"></canvas>
+        <div class="vals" id="hPills"></div>
+        <div class="calc" id="hCalc"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="num">2</span>Rule evaluation</h2>
+    <p class="sub">AND = <code>min</code>, OR = <code>max</code>. Each rule's result is its <b>firing strength</b>: how strongly its output set is activated.</p>
+    <div class="rules" id="rules"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="num">3</span>Clipping &amp; aggregation, then <span class="num" style="margin-left:6px">4</span>Defuzzification</h2>
+    <p class="sub">Each output set is <b>clipped</b> (cut off) at its rule's firing strength: <code>min(R, set(i))</code>. The clipped shapes are combined with <code>max</code> into one aggregated shape. The centroid (centre of gravity) of that shape is the crisp fan speed.</p>
+    <div class="outgrid">
+      <div>
+        <div class="chartTitle">Fan speed (0–100): slow = tri(0,0,50), medium = tri(25,50,75), fast = tri(50,100,100)</div>
+        <canvas id="cOut" height="300"></canvas>
+        <div class="legend">
+          <span><i class="sw" style="background:var(--slow);opacity:.35"></i>clipped Slow</span>
+          <span><i class="sw" style="background:var(--medium);opacity:.35"></i>clipped Medium</span>
+          <span><i class="sw" style="background:var(--fast);opacity:.35"></i>clipped Fast</span>
+          <span><i class="sw" style="background:var(--agg)"></i>aggregated (max)</span>
+          <span><i class="sw" style="background:var(--crisp)"></i>centroid = crisp output</span>
+          <span>dashed = original (unclipped) sets</span>
+        </div>
+        <div class="calc" id="dCalc"></div>
+      </div>
+      <div class="fanbox">
+        <svg id="fan" viewBox="-60 -60 120 120">
+          <circle r="56" fill="#f3f5fa" stroke="#d9dde7" stroke-width="2"/>
+          <g id="blades">
+            <path d="M0,0 C10,-12 12,-40 0,-50 C-12,-40 -10,-12 0,0Z" fill="#2fbf71"/>
+            <path d="M0,0 C10,-12 12,-40 0,-50 C-12,-40 -10,-12 0,0Z" fill="#2fbf71" transform="rotate(120)"/>
+            <path d="M0,0 C10,-12 12,-40 0,-50 C-12,-40 -10,-12 0,0Z" fill="#2fbf71" transform="rotate(240)"/>
+          </g>
+          <circle r="8" fill="#1d2433"/>
+        </svg>
+        <div class="speed" id="speed">0</div>
+        <div class="lbl">Crisp Fan Speed (0–100)</div>
+        <div class="lbl" id="speedWord" style="margin-top:4px;font-weight:700"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Program output (what your Python prints)</h2>
+    <div class="console" id="console"></div>
+  </div>
+</main>
+
+<script>
+// ---------- Membership functions, same as the Python code ----------
+// Each returns {v, f}: f = true if the value is a Python float (from division), false for the int literals 0 / 1.
+function triangle(x, a, b, c){
+  if (x === b) return {v:1, f:false};
+  else if (x <= a || x >= c) return {v:0, f:false};
+  else if (x < b) return {v:(x-a)/(b-a), f:true};
+  else return {v:(c-x)/(c-b), f:true};
+}
+const pmin = (...xs) => xs.reduce((m,x)=> x.v < m.v ? x : m);   // Python min keeps the first smallest
+const pmax = (...xs) => xs.reduce((m,x)=> x.v > m.v ? x : m);
+function py(o){ // print like Python
+  if (!o.f) return String(o.v);
+  return Number.isInteger(o.v) ? o.v.toFixed(1) : String(o.v);
+}
+const r3 = v => (Math.round(v*1000)/1000).toString();
+
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+// ---------- Generic chart ----------
+function setupCanvas(cv){
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = +cv.getAttribute('height');
+  cv.width = w*dpr; cv.height = h*dpr; cv.style.height = h+'px';
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx, w, h};
+}
+function axes(ctx, w, h, xmin, xmax, xticks, xlabel){
+  const P = {l:38, r:12, t:12, b:34};
+  const X = x => P.l + (x-xmin)/(xmax-xmin)*(w-P.l-P.r);
+  const Y = y => h-P.b - y*(h-P.t-P.b);
+  ctx.strokeStyle = '#e6e9f0'; ctx.lineWidth = 1; ctx.fillStyle = '#8a92a5'; ctx.font = '11px system-ui';
+  for (const y of [0,0.25,0.5,0.75,1]){
+    ctx.beginPath(); ctx.moveTo(X(xmin),Y(y)); ctx.lineTo(X(xmax),Y(y)); ctx.stroke();
+    ctx.textAlign='right'; ctx.fillText(y, X(xmin)-6, Y(y)+4);
+  }
+  ctx.textAlign='center';
+  for (const x of xticks) ctx.fillText(x, X(x), h-P.b+15);
+  ctx.fillText(xlabel, (X(xmin)+X(xmax))/2, h-4);
+  ctx.strokeStyle='#9aa2b4'; ctx.beginPath(); ctx.moveTo(X(xmin),Y(0)); ctx.lineTo(X(xmax),Y(0)); ctx.stroke();
+  return {X, Y};
+}
+function plotFn(ctx, X, Y, fn, xmin, xmax, color, {width=2.5, dash=[], fill=null}={}){
+  const N = 600, pts = [];
+  for (let i=0;i<=N;i++){ const x = xmin + (xmax-xmin)*i/N; pts.push([x, fn(x)]); }
+  if (fill){
+    ctx.beginPath(); ctx.moveTo(X(xmin), Y(0));
+    for (const [x,y] of pts) ctx.lineTo(X(x), Y(y));
+    ctx.lineTo(X(xmax), Y(0)); ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
+  }
+  ctx.beginPath(); ctx.setLineDash(dash);
+  pts.forEach(([x,y],i)=> i? ctx.lineTo(X(x),Y(y)) : ctx.moveTo(X(x),Y(y)));
+  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke(); ctx.setLineDash([]);
+}
+// continuous version of triangle for drawing (handles a==b / b==c shoulders)
+function triC(x,a,b,c){
+  if (x===b) return 1;
+  if (x<=a || x>=c) return (a===b && x===a) || (b===c && x===c) ? 1 : 0;
+  return x<b ? (x-a)/(b-a) : (c-x)/(c-b);
+}
+function hexA(hex, a){ const n=parseInt(hex.slice(1),16); return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`; }
+
+function inputChart(cv, xmin, xmax, ticks, label, sets, xIn){
+  const {ctx,w,h} = setupCanvas(cv);
+  ctx.clearRect(0,0,w,h);
+  const {X,Y} = axes(ctx,w,h,xmin,xmax,ticks,label);
+  for (const s of sets){
+    plotFn(ctx,X,Y,x=>triC(x,...s.p),xmin,xmax,s.color,{fill:hexA(s.color,.08)});
+    // label at the peak
+    ctx.fillStyle = s.color; ctx.font='bold 12px system-ui'; ctx.textAlign='center';
+    const px = Math.min(Math.max(s.p[1], xmin+12), xmax-12);
+    ctx.fillText(s.name, X(px), Y(1)-2 < 14 ? 14 : Y(1)-2);
+  }
+  // input line
+  ctx.setLineDash([5,4]); ctx.strokeStyle='#1d2433'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(X(xIn),Y(0)); ctx.lineTo(X(xIn),Y(1.02)); ctx.stroke(); ctx.setLineDash([]);
+  // dots + horizontal guides
+  for (const s of sets){
+    const m = s.mu.v;
+    if (m>0){
+      ctx.setLineDash([2,3]); ctx.strokeStyle=s.color; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(X(xmin),Y(m)); ctx.lineTo(X(xIn),Y(m)); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.beginPath(); ctx.arc(X(xIn),Y(m),5.5,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
+    ctx.lineWidth=3; ctx.strokeStyle=s.color; ctx.stroke();
+  }
+}
+
+// ---------- Explain a triangle membership computation ----------
+function explain(name, x, a, b, c){
+  if (x===b) return `${name}: x == b (${b}) → 1`;
+  if (x<=a || x>=c) return `${name}: x ≤ ${a} or x ≥ ${c} → 0`;
+  if (x<b) return `${name}: (x−a)/(b−a) = (${x}−${a})/(${b}−${a}) = ${r3((x-a)/(b-a))}`;
+  return `${name}: (c−x)/(c−b) = (${c}−${x})/(${c}−${b}) = ${r3((c-x)/(c-b))}`;
+}
+
+// ---------- Main computation + render ----------
+let fanSpeed = 0;
+function update(){
+  const temperature = +document.getElementById('temp').value;
+  const humidity = +document.getElementById('hum').value;
+  document.getElementById('tVal').textContent = temperature;
+  document.getElementById('hVal').textContent = humidity;
+
+  // 1. Fuzzification
+  const cold = triangle(temperature,0,0,20), warm = triangle(temperature,10,20,30), hot = triangle(temperature,20,40,40);
+  const low = triangle(humidity,0,0,60), high = triangle(humidity,40,100,100);
+
+  const tSets = [
+    {name:'Cold', p:[0,0,20], color:css('--cold'), mu:cold},
+    {name:'Warm', p:[10,20,30], color:css('--warm'), mu:warm},
+    {name:'Hot', p:[20,40,40], color:css('--hot'), mu:hot}];
+  const hSets = [
+    {name:'Low', p:[0,0,60], color:css('--low'), mu:low},
+    {name:'High', p:[40,100,100], color:css('--high'), mu:high}];
+  inputChart(document.getElementById('cTemp'),0,45,[0,5,10,15,20,25,30,35,40,45],'Temperature (°C)',tSets,temperature);
+  inputChart(document.getElementById('cHum'),0,100,[0,10,20,30,40,50,60,70,80,90,100],'Humidity (%)',hSets,humidity);
+  const pills = sets => sets.map(s=>`<span class="pill ${s.mu.v===0?'zero':''}" style="border-color:${s.color}">${s.name} = <b>${r3(s.mu.v)}</b></span>`).join('');
+  document.getElementById('tPills').innerHTML = pills(tSets);
+  document.getElementById('hPills').innerHTML = pills(hSets);
+  document.getElementById('tCalc').innerHTML = [explain('cold',temperature,0,0,20),explain('warm',temperature,10,20,30),explain('hot',temperature,20,40,40)].join('<br>');
+  document.getElementById('hCalc').innerHTML = [explain('low',humidity,0,0,60),explain('high',humidity,40,100,100)].join('<br>');
+
+  // 2. Rules
+  const R1 = pmin(hot, high), R2 = warm, R3 = pmax(cold, low);
+  const rules = [
+    {id:'R1', out:'Fast', color:css('--fast'), eng:'IF temperature is <b>Hot</b> AND humidity is <b>High</b> THEN speed is <b>Fast</b>',
+     math:`R1 = min(hot, high)<br>&nbsp;&nbsp; = min(${r3(hot.v)}, ${r3(high.v)}) = <b>${r3(R1.v)}</b>`, v:R1.v},
+    {id:'R2', out:'Medium', color:css('--medium'), eng:'IF temperature is <b>Warm</b> THEN speed is <b>Medium</b>',
+     math:`R2 = warm<br>&nbsp;&nbsp; = <b>${r3(R2.v)}</b>`, v:R2.v},
+    {id:'R3', out:'Slow', color:css('--slow'), eng:'IF temperature is <b>Cold</b> OR humidity is <b>Low</b> THEN speed is <b>Slow</b>',
+     math:`R3 = max(cold, low)<br>&nbsp;&nbsp; = max(${r3(cold.v)}, ${r3(low.v)}) = <b>${r3(R3.v)}</b>`, v:R3.v}];
+  document.getElementById('rules').innerHTML = rules.map(r=>`
+    <div class="rule ${r.v===0?'off':''}" style="border-color:${r.v>0?r.color:'var(--line)'}">
+      <div class="head" style="color:${r.color}">${r.id} → ${r.out} ${r.v===0?'<span style="color:var(--muted);font-weight:400">(does not fire)</span>':''}</div>
+      <div class="eng">${r.eng}</div>
+      <div class="math">${r.math}</div>
+      <div class="bar"><i style="width:${r.v*100}%;background:${r.color}"></i></div>
+    </div>`).join('');
+
+  // 3. Clipping & aggregation (on integer points 0..100, exactly like the code)
+  const aggregated = [];
+  for (let i=0;i<=100;i++){
+    const slow = Math.min(R3.v, triangle(i,0,0,50).v);
+    const medium = Math.min(R2.v, triangle(i,25,50,75).v);
+    const fast = Math.min(R1.v, triangle(i,50,100,100).v);
+    aggregated.push(Math.max(slow, medium, fast));
+  }
+
+  // 4. Defuzzification
+  let num=0, den=0;
+  for (let i=0;i<aggregated.length;i++){ num += i*aggregated[i]; den += aggregated[i]; }
+  const crisp = den!==0 ? {v:num/den, f:true} : {v:0, f:false};
+
+  // ---- output chart ----
+  const cv = document.getElementById('cOut');
+  const {ctx,w,h} = setupCanvas(cv);
+  ctx.clearRect(0,0,w,h);
+  const {X,Y} = axes(ctx,w,h,0,100,[0,10,20,30,40,50,60,70,80,90,100],'Fan speed');
+  const outs = [
+    {name:'Slow', p:[0,0,50], R:R3.v, color:css('--slow')},
+    {name:'Medium', p:[25,50,75], R:R2.v, color:css('--medium')},
+    {name:'Fast', p:[50,100,100], R:R1.v, color:css('--fast')}];
+  for (const o of outs){
+    plotFn(ctx,X,Y,x=>triC(x,...o.p),0,100,hexA(o.color,.6),{width:1.5,dash:[5,4]});
+    if (o.R>0){
+      plotFn(ctx,X,Y,x=>Math.min(o.R,triC(x,...o.p)),0,100,o.color,{width:2,fill:hexA(o.color,.28)});
+      // clip level line
+      ctx.setLineDash([2,3]); ctx.strokeStyle=o.color; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(X(0),Y(o.R)); ctx.lineTo(X(100),Y(o.R)); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle=o.color; ctx.font='bold 11px system-ui'; ctx.textAlign='left';
+      ctx.fillText(`${o.name} clipped at ${r3(o.R)}`, X(o.p[1]===0?2:o.p[1]===100?62:o.p[1]-12), Y(o.R)-5);
+    }
+    ctx.fillStyle=o.color; ctx.font='bold 12px system-ui'; ctx.textAlign='center';
+    ctx.fillText(o.name, X(Math.min(Math.max(o.p[1],6),94)), 14);
+  }
+  // aggregated (from the 101 sample points)
+  ctx.beginPath();
+  aggregated.forEach((y,i)=> i? ctx.lineTo(X(i),Y(y)) : ctx.moveTo(X(i),Y(y)));
+  ctx.strokeStyle=css('--agg'); ctx.lineWidth=3; ctx.stroke();
+  // sample points
+  ctx.fillStyle=css('--agg');
+  for (let i=0;i<=100;i+=1) if (aggregated[i]>0){ ctx.beginPath(); ctx.arc(X(i),Y(aggregated[i]),1.6,0,Math.PI*2); ctx.fill(); }
+  // centroid
+  if (den!==0){
+    ctx.strokeStyle=css('--crisp'); ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(X(crisp.v),Y(0)); ctx.lineTo(X(crisp.v),Y(1.0)); ctx.stroke();
+    ctx.fillStyle=css('--crisp'); ctx.beginPath();
+    ctx.moveTo(X(crisp.v),Y(0)); ctx.lineTo(X(crisp.v)-7,Y(0)+11); ctx.lineTo(X(crisp.v)+7,Y(0)+11); ctx.closePath(); ctx.fill();
+    ctx.font='bold 12px system-ui'; ctx.textAlign = crisp.v>80?'right':'left';
+    ctx.fillText(`centroid = ${crisp.v.toFixed(2)}`, X(crisp.v)+(crisp.v>80?-6:6), Y(0.95));
+  }
+
+  document.getElementById('dCalc').innerHTML =
+    `numerator = Σ i·μ(i) = ${num.toFixed(3)} &nbsp;&nbsp; denominator = Σ μ(i) = ${den.toFixed(3)} &nbsp;&nbsp; (i = 0, 1, …, 100)<br>` +
+    (den!==0 ? `crisp_speed = ${num.toFixed(3)} / ${den.toFixed(3)} = <b style="color:var(--crisp)">${crisp.v.toFixed(4)}</b>`
+             : `denominator is 0 (no rule fired), so crisp_speed = 0`);
+
+  // fan
+  fanSpeed = crisp.v;
+  document.getElementById('speed').textContent = crisp.v.toFixed(2);
+  document.getElementById('speedWord').textContent =
+    den===0 ? 'no rule fired' : crisp.v < 33 ? 'mostly SLOW' : crisp.v < 66 ? 'around MEDIUM' : 'mostly FAST';
+
+  // console output, formatted like Python's print
+  document.getElementById('console').textContent =
+`FUZZIFICATION
+Cold = ${py(cold)}
+Warm = ${py(warm)}
+Hot = ${py(hot)}
+Low = ${py(low)}
+High = ${py(high)}
+
+RULE FIRING STRENGTHS
+R1 (Fast) = ${py(R1)}
+R2 (Medium) = ${py(R2)}
+R3 (Slow) = ${py(R3)}
+
+DEFUZZIFICATION
+Crisp Fan Speed = ${py(crisp)}`;
+}
+
+// spinning fan, speed proportional to output
+let angle = 0, last = performance.now();
+function spin(t){
+  const dt = (t-last)/1000; last = t;
+  angle = (angle + fanSpeed*9*dt) % 360;
+  document.getElementById('blades').setAttribute('transform', `rotate(${angle})`);
+  requestAnimationFrame(spin);
+}
+requestAnimationFrame(spin);
+
+document.getElementById('temp').oninput = update;
+document.getElementById('hum').oninput = update;
+document.querySelectorAll('.presets button').forEach(b=> b.onclick = ()=>{
+  document.getElementById('temp').value = b.dataset.t;
+  document.getElementById('hum').value = b.dataset.h;
+  update();
+});
+window.addEventListener('resize', update);
+update();
+</script>
+</body>
+</html>
